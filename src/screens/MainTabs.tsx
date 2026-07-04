@@ -12,13 +12,17 @@ import { colors } from '../theme';
 import { AlbumsScreen } from './AlbumsScreen';
 import { FavoritesScreen } from './FavoritesScreen';
 import { LibraryScreen } from './LibraryScreen';
+import { OnlineScreen } from './OnlineScreen';
 import { PlaylistsScreen } from './PlaylistsScreen';
+import { ScheduleScreen } from './ScheduleScreen';
 
 const Tab = createBottomTabNavigator<TabsParamList>();
 
 const ICONS: Record<keyof TabsParamList, keyof typeof Ionicons.glyphMap> = {
   Songs: 'musical-notes',
   Albums: 'albums',
+  Online: 'globe',
+  Bell: 'alarm',
   Playlists: 'list',
   Favorites: 'heart',
 };
@@ -42,7 +46,7 @@ export function MainTabs() {
       paddingBottom: 8,
       paddingTop: 6,
     },
-    tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+    tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
     tabBarIcon: ({ color, size }) => (
       <Ionicons name={ICONS[route.name]} size={size} color={color} />
     ),
@@ -53,6 +57,8 @@ export function MainTabs() {
       <Tab.Navigator screenOptions={screenOptions}>
         <Tab.Screen name="Songs" component={LibraryScreen} />
         <Tab.Screen name="Albums" component={AlbumsScreen} />
+        <Tab.Screen name="Online" component={OnlineScreen} />
+        <Tab.Screen name="Bell" component={ScheduleScreen} />
         <Tab.Screen name="Playlists" component={PlaylistsScreen} />
         <Tab.Screen name="Favorites" component={FavoritesScreen} />
       </Tab.Navigator>

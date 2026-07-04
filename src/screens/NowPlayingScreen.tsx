@@ -12,6 +12,7 @@ import TrackPlayer, {
 } from 'react-native-track-player';
 import { ArtCover } from '../components/ArtCover';
 import { EmptyState } from '../components/EmptyState';
+import { SleepTimerSheet } from '../components/SleepTimerSheet';
 import { formatDuration } from '../lib/format';
 import type { RootStackParamList } from '../navigation';
 import { usePlayer } from '../store/PlayerStore';
@@ -30,10 +31,12 @@ export function NowPlayingScreen({ navigation }: Props) {
     cycleRepeat,
     toggleFavorite,
     isFavorite,
+    sleepTimer,
   } = usePlayer();
 
   const [seeking, setSeeking] = useState(false);
   const [seekValue, setSeekValue] = useState(0);
+  const [timerOpen, setTimerOpen] = useState(false);
   const displayValue = seeking ? seekValue : position;
 
   if (!track) {
@@ -55,13 +58,22 @@ export function NowPlayingScreen({ navigation }: Props) {
           <Ionicons name="chevron-down" size={28} color={colors.text} />
         </Pressable>
         <Text style={styles.topTitle}>Now Playing</Text>
-        <Pressable hitSlop={12} onPress={() => toggleFavorite(trackId)}>
-          <Ionicons
-            name={isFavorite(trackId) ? 'heart' : 'heart-outline'}
-            size={24}
-            color={isFavorite(trackId) ? colors.accent : colors.text}
-          />
-        </Pressable>
+        <View style={styles.topActions}>
+          <Pressable hitSlop={12} onPress={() => setTimerOpen(true)}>
+            <Ionicons
+              name={sleepTimer ? 'moon' : 'moon-outline'}
+              size={22}
+              color={sleepTimer ? colors.primary : colors.text}
+            />
+          </Pressable>
+          <Pressable hitSlop={12} onPress={() => toggleFavorite(trackId)}>
+            <Ionicons
+              name={isFavorite(trackId) ? 'heart' : 'heart-outline'}
+              size={24}
+              color={isFavorite(trackId) ? colors.accent : colors.text}
+            />
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.artWrap}>
@@ -148,6 +160,8 @@ export function NowPlayingScreen({ navigation }: Props) {
           ) : null}
         </Pressable>
       </View>
+
+      <SleepTimerSheet visible={timerOpen} onClose={() => setTimerOpen(false)} />
     </SafeAreaView>
   );
 }
@@ -170,6 +184,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
     textTransform: 'uppercase',
+  },
+  topActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(4),
   },
   artWrap: {
     alignItems: 'center',
