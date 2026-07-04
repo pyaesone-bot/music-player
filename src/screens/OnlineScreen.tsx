@@ -16,7 +16,7 @@ import { useActiveTrack } from 'react-native-track-player';
 import { EmptyState } from '../components/EmptyState';
 import { Header } from '../components/Header';
 import { formatDuration } from '../lib/format';
-import { searchOnline, trendingOnline } from '../lib/audius';
+import { searchOnline, trendingOnline } from '../lib/youtube';
 import { usePlayer } from '../store/PlayerStore';
 import { colors, radius, spacing } from '../theme';
 import type { OnlineTrack } from '../types';
@@ -29,6 +29,7 @@ export function OnlineScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState<string | null>(null);
   const reqId = useRef(0);
 
   const load = useCallback(async (q: string) => {
@@ -52,6 +53,20 @@ export function OnlineScreen() {
     const t = setTimeout(() => void load(query), query ? 400 : 0);
     return () => clearTimeout(t);
   }, [query, load]);
+
+  const onPlay = async (track: OnlineTrack, index: number) => {
+    setPreparing(track.id);
+    try {
+      await playOnline(results, index);
+    } catch (e) {
+      Alert.alert(
+        "Couldn't play track",
+        e instanceof Error ? e.message : 'Could not extract an audio stream.',
+      );
+    } finally {
+      setPreparing(null);
+    }
+  };
 
   const onDownload = async (track: OnlineTrack) => {
     setDownloading(track.id);
@@ -106,7 +121,7 @@ export function OnlineScreen() {
           <Pressable
             style={styles.row}
             android_ripple={{ color: colors.cardAlt }}
-            onPress={() => playOnline(results, index)}
+            onPress={() => onPlay(item, index)}
           >
             {item.artwork ? (
               <Image source={{ uri: item.artwork }} style={styles.art} />
@@ -115,12 +130,17 @@ export function OnlineScreen() {
                 <Ionicons name="musical-note" size={22} color={colors.textMuted} />
               </View>
             )}
+            {preparing === item.id ? (
+              <View style={[styles.art, styles.artOverlay]}>
+                <ActivityIndicator size="small" color="#fff" />
+              </View>
+            ) : null}
             <View style={styles.meta}>
               <Text
                 numberOfLines={1}
                 style={[
                   styles.title,
-                  activeTrack?.id === `audius:${item.id}` && styles.titleActive,
+                  activeTrack?.id === `yt:${item.id}` && styles.titleActive,
                 ]}
               >
                 {item.title}
@@ -144,7 +164,9 @@ export function OnlineScreen() {
           </Pressable>
         )}
         ListFooterComponent={
-          <Text style={styles.attribution}>Powered by Audius · royalty-free music</Text>
+          <Text style={styles.attribution}>
+            YouTube · on-device via youtubei.js (open-source)
+          </Text>
         }
       />
     );
@@ -152,13 +174,13 @@ export function OnlineScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <Header title="Online" subtitle="Search & stream royalty-free music" />
+      <Header title="Online" subtitle="Search & stream music from YouTube" />
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={18} color={colors.textFaint} />
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search Audius…"
+          placeholder="Search YouTube…"
           placeholderTextColor={colors.textFaint}
           style={styles.searchInput}
           returnKeyType="search"
@@ -216,6 +238,13 @@ const styles = StyleSheet.create({
   },
   artFallback: {
     backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  artOverlay: {
+    position: 'absolute',
+    left: spacing(4),
+    backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
   },

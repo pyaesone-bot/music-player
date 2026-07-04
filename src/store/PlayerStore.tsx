@@ -10,7 +10,7 @@ import React, {
 import TrackPlayer, { RepeatMode } from 'react-native-track-player';
 import { setupPlayer } from '../playback/setup';
 import { ensurePermission, scanAudio, type PermissionState } from '../library/scan';
-import { downloadOnline, type DownloadResult } from '../lib/audius';
+import { downloadOnline, resolveStreamUrl, type DownloadResult } from '../lib/youtube';
 import { syncScheduleNotifications } from '../lib/notifications';
 import {
   loadFavorites,
@@ -184,7 +184,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const playOnline = useCallback(
     async (list: OnlineTrack[], startIndex: number) => {
-      await playQueue(list.map(onlineToSong), startIndex);
+      const track = list[startIndex];
+      if (!track) return;
+      // The playable audio URL isn't known until we ask Cobalt to extract it.
+      const url = await resolveStreamUrl(track.id);
+      if (!url) throw new Error('Could not extract an audio stream for this track.');
+      await playQueue([onlineToSong(track, url)], 0);
     },
     [playQueue],
   );

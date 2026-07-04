@@ -49,14 +49,13 @@ export type Schedule = {
   createdAt: number;
 };
 
-/** A streamable track from the online (Audius) catalogue. */
+/** A track from YouTube (via the open-source Piped search API). */
 export type OnlineTrack = {
-  id: string;
+  id: string; // YouTube video id
   title: string;
   artist: string;
   artwork?: string;
   duration: number;
-  streamUrl: string;
 };
 
 export function songToTrack(song: Song): RNTPTrack {
@@ -71,16 +70,16 @@ export function songToTrack(song: Song): RNTPTrack {
   };
 }
 
-export function onlineToSong(t: OnlineTrack): Song {
+export function onlineToSong(t: OnlineTrack, url: string): Song {
   return {
-    id: `audius:${t.id}`,
-    url: t.streamUrl,
+    id: `yt:${t.id}`,
+    url,
     title: t.title,
     artist: t.artist,
-    album: 'Audius',
+    album: 'YouTube',
     duration: t.duration,
-    filename: `${t.artist} - ${t.title}.mp3`,
-    ext: 'mp3',
+    filename: `${t.artist} - ${t.title}.m4a`,
+    ext: 'm4a',
     artwork: t.artwork,
   };
 }
