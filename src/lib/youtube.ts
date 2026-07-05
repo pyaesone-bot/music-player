@@ -1,7 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library/legacy';
-import { Innertube, YTNodes } from 'youtubei.js';
+import { Innertube, Platform, YTNodes } from 'youtubei.js';
 import type { OnlineTrack } from '../types';
+import { evalPlayerScript, generatePoToken } from './ytwebview';
 
 /**
  * On-device YouTube client powered by the open-source **youtubei.js** library.
@@ -12,18 +13,68 @@ import type { OnlineTrack } from '../types';
  * likely to be blocked by YouTube's anti-bot checks than server-side extractors
  * (Piped / Invidious / Cobalt), which run on data-center IPs.
  *
- * Note: signature deciphering and network I/O rely on the polyfills installed in
- * `src/polyfills.ts`, which must be imported before this module loads.
+ * Two things YouTube now requires can't be done in Hermes, so they are handled
+ * by a hidden helper WebView (see `ytwebview.tsx`):
+ *   - a **Proof-of-Origin Token (PoToken)**, without which YouTube refuses to
+ *     return streaming data even to on-device clients; and
+ *   - **signature deciphering**, which youtubei.js v17 delegates to a
+ *     caller-provided JavaScript evaluator.
+ *
+ * Network I/O relies on the polyfills installed in `src/polyfills.ts`, which
+ * must be imported before this module loads.
  */
+
+// youtubei.js v17 ships no built-in JS evaluator; run the player script in the
+// helper WebView's real JavaScript engine instead of a partial interpreter.
+Platform.load({
+  ...Platform.shim,
+  eval: (data: { output: string }) => evalPlayerScript(data.output),
+});
 
 /** A popular search used to seed the screen before the user types anything. */
 const DEFAULT_QUERY = 'lofi hip hop';
 
 let clientPromise: Promise<Innertube> | null = null;
 
+/** Human-readable status of the last PoToken attempt, surfaced in errors. */
+let poTokenStatus = 'unknown';
+
+async function createClient(): Promise<Innertube> {
+  // A quick local session just to obtain visitor data to bind the PoToken to.
+  const seed = await Innertube.create({
+    generate_session_locally: true,
+    retrieve_player: false,
+  });
+  const visitorData = seed.session.context.client.visitorData;
+
+  let poToken: string | undefined;
+  if (visitorData) {
+    try {
+      poToken = await generatePoToken(visitorData);
+      poTokenStatus = `ok(${poToken.length})`;
+    } catch (e) {
+      // Search still works without a PoToken; extraction likely won't, but we
+      // fall through so the app stays usable.
+      poToken = undefined;
+      poTokenStatus = `fail: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  } else {
+    poTokenStatus = 'no visitorData';
+  }
+
+  return Innertube.create({
+    generate_session_locally: true,
+    visitor_data: visitorData,
+    po_token: poToken,
+  });
+}
+
 async function client(): Promise<Innertube> {
   if (!clientPromise) {
-    clientPromise = Innertube.create({ generate_session_locally: true });
+    clientPromise = createClient().catch((e) => {
+      clientPromise = null; // allow a retry on the next call
+      throw e;
+    });
   }
   return clientPromise;
 }
@@ -58,7 +109,7 @@ export async function trendingOnline(): Promise<OnlineTrack[]> {
  * under different anti-bot conditions, so we fall back through several to
  * maximise the chance of getting a playable audio format.
  */
-const STREAM_CLIENTS = ['IOS', 'ANDROID', 'TV_EMBEDDED', 'MWEB', 'WEB'] as const;
+const STREAM_CLIENTS = ['WEB', 'MWEB', 'TV_EMBEDDED', 'IOS', 'ANDROID'] as const;
 
 /**
  * Resolves a directly-playable audio URL for a YouTube video id. Returns null
@@ -66,20 +117,33 @@ const STREAM_CLIENTS = ['IOS', 'ANDROID', 'TV_EMBEDDED', 'MWEB', 'WEB'] as const
  */
 export async function resolveStreamUrl(videoId: string): Promise<string | null> {
   const yt = await client();
-  let lastError: unknown = null;
+
+  // YouTube binds the token in each /player request to the video id, so mint a
+  // content-bound token for this video (falling back to the session token).
+  let contentToken: string | undefined;
+  try {
+    contentToken = await generatePoToken(videoId);
+  } catch {
+    contentToken = undefined;
+  }
+
+  const errors: string[] = [];
   for (const c of STREAM_CLIENTS) {
     try {
-      const info = await yt.getBasicInfo(videoId, { client: c });
-      if (!info.streaming_data) continue;
+      const info = await yt.getBasicInfo(videoId, { client: c, po_token: contentToken });
+      if (!info.streaming_data) {
+        errors.push(`${c}: ${info.playability_status?.status ?? 'no stream'}`);
+        continue;
+      }
       const format = info.chooseFormat({ type: 'audio', quality: 'best' });
       const url = await format.decipher(yt.session.player);
       if (url) return url;
+      errors.push(`${c}: empty url`);
     } catch (e) {
-      lastError = e; // try the next client
+      errors.push(`${c}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  if (lastError) throw lastError instanceof Error ? lastError : new Error(String(lastError));
-  return null;
+  throw new Error(`[pot ${poTokenStatus}] ${errors.join(' | ')}`);
 }
 
 function safeFileName(track: OnlineTrack): string {

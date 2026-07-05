@@ -9,6 +9,7 @@ import { AlbumDetailScreen } from './src/screens/AlbumDetailScreen';
 import { MainTabs } from './src/screens/MainTabs';
 import { NowPlayingScreen } from './src/screens/NowPlayingScreen';
 import { PlaylistDetailScreen } from './src/screens/PlaylistDetailScreen';
+import { YtHelperWebView } from './src/lib/ytwebview';
 import { PlayerProvider, usePlayer } from './src/store/PlayerStore';
 import { colors } from './src/theme';
 
@@ -41,6 +42,7 @@ export default function App() {
       <SafeAreaProvider>
         <PlayerProvider>
           <AutoScanner />
+          <YtHelperWebView />
           <StatusBar style="light" />
           <NavigationContainer theme={navTheme}>
             <Stack.Navigator
