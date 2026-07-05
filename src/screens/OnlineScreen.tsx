@@ -6,6 +6,7 @@ import {
   FlatList,
   Image,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -30,7 +31,16 @@ export function OnlineScreen() {
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [preparing, setPreparing] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<string | null>(null);
   const reqId = useRef(0);
+
+  const showFailure = (title: string, detail: string) => {
+    setDiagnostic(detail);
+    Alert.alert(title, detail, [
+      { text: 'Share details', onPress: () => void Share.share({ message: detail }) },
+      { text: 'OK', style: 'cancel' },
+    ]);
+  };
 
   const load = useCallback(async (q: string) => {
     const id = ++reqId.current;
@@ -56,10 +66,11 @@ export function OnlineScreen() {
 
   const onPlay = async (track: OnlineTrack, index: number) => {
     setPreparing(track.id);
+    setDiagnostic(null);
     try {
       await playOnline(results, index);
     } catch (e) {
-      Alert.alert(
+      showFailure(
         "Couldn't play track",
         e instanceof Error ? e.message : 'Could not extract an audio stream.',
       );
@@ -70,6 +81,7 @@ export function OnlineScreen() {
 
   const onDownload = async (track: OnlineTrack) => {
     setDownloading(track.id);
+    setDiagnostic(null);
     try {
       const res = await downloadTrack(track);
       if (res.ok) {
@@ -80,7 +92,7 @@ export function OnlineScreen() {
             : `"${track.title}" was downloaded to the app.`,
         );
       } else {
-        Alert.alert('Download failed', res.error);
+        showFailure('Download failed', res.error);
       }
     } finally {
       setDownloading(null);
@@ -192,6 +204,18 @@ export function OnlineScreen() {
           </Pressable>
         ) : null}
       </View>
+      {diagnostic ? (
+        <Pressable
+          style={styles.diagBanner}
+          onPress={() => void Share.share({ message: diagnostic })}
+        >
+          <Ionicons name="warning-outline" size={16} color="#ffcf6b" />
+          <Text selectable style={styles.diagText}>
+            {diagnostic}
+          </Text>
+          <Ionicons name="share-outline" size={16} color={colors.textMuted} />
+        </Pressable>
+      ) : null}
       <View style={styles.body}>{renderBody()}</View>
     </SafeAreaView>
   );
@@ -269,6 +293,24 @@ const styles = StyleSheet.create({
     padding: spacing(1),
     width: 34,
     alignItems: 'center',
+  },
+  diagBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(2),
+    backgroundColor: colors.card,
+    marginHorizontal: spacing(4),
+    marginBottom: spacing(3),
+    paddingHorizontal: spacing(3),
+    paddingVertical: spacing(2),
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#5a4a00',
+  },
+  diagText: {
+    flex: 1,
+    color: colors.textMuted,
+    fontSize: 11.5,
   },
   attribution: {
     color: colors.textFaint,
