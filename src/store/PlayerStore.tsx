@@ -186,10 +186,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     async (list: OnlineTrack[], startIndex: number) => {
       const track = list[startIndex];
       if (!track) return;
-      // The playable audio URL isn't known until we ask Cobalt to extract it.
-      const url = await resolveStreamUrl(track.id);
-      if (!url) throw new Error('Could not extract an audio stream for this track.');
-      await playQueue([onlineToSong(track, url)], 0);
+      // The playable audio URL isn't known until we extract it on-device.
+      const stream = await resolveStreamUrl(track.id);
+      if (!stream) throw new Error('Could not extract an audio stream for this track.');
+      await playQueue(
+        [onlineToSong(track, stream.url, { headers: stream.headers, userAgent: stream.userAgent })],
+        0,
+      );
     },
     [playQueue],
   );

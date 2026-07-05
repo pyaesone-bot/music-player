@@ -109,13 +109,56 @@ export async function trendingOnline(): Promise<OnlineTrack[]> {
  * under different anti-bot conditions, so we fall back through several to
  * maximise the chance of getting a playable audio format.
  */
-const STREAM_CLIENTS = ['WEB', 'MWEB', 'TV_EMBEDDED', 'IOS', 'ANDROID'] as const;
+type StreamClient = 'WEB' | 'MWEB' | 'TV_EMBEDDED' | 'IOS' | 'ANDROID';
+
+const STREAM_CLIENTS: StreamClient[] = ['WEB', 'MWEB', 'TV_EMBEDDED', 'IOS', 'ANDROID'];
 
 /**
- * Resolves a directly-playable audio URL for a YouTube video id. Returns null
- * when no suitable audio stream could be extracted.
+ * A resolved, directly-playable audio stream. The googlevideo media servers
+ * bind each stream URL to the client that requested it and reject fetches whose
+ * `User-Agent` (and, for browser clients, `Origin`/`Referer`) don't match —
+ * returning HTTP 403 — so the caller must replay these exact headers when it
+ * streams or downloads the URL.
  */
-export async function resolveStreamUrl(videoId: string): Promise<string | null> {
+export type StreamInfo = {
+  url: string;
+  userAgent: string;
+  headers: Record<string, string>;
+};
+
+/**
+ * The `User-Agent` each Innertube client is expected to present to the media
+ * servers. Mismatches cause 403s. Values mirror youtubei.js's own client
+ * constants (browser clients use a matching desktop/mobile UA).
+ */
+const STREAM_USER_AGENT: Record<StreamClient, string> = {
+  WEB: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  MWEB: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+  TV_EMBEDDED: 'Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version',
+  IOS: 'com.google.ios.youtube/20.11.6 (iPhone10,4; U; CPU iOS 16_7_7 like Mac OS X)',
+  ANDROID:
+    'com.google.android.youtube/21.03.36(Linux; U; Android 16; en_US; SM-S908E Build/TP1A.220624.014) gzip',
+};
+
+/** Browser-family clients also need YouTube's Origin/Referer on media fetches. */
+const WEB_FAMILY: ReadonlySet<StreamClient> = new Set<StreamClient>(['WEB', 'MWEB', 'TV_EMBEDDED']);
+
+function streamHeadersFor(c: StreamClient): { userAgent: string; headers: Record<string, string> } {
+  const userAgent = STREAM_USER_AGENT[c];
+  const headers: Record<string, string> = { 'User-Agent': userAgent, accept: '*/*' };
+  if (WEB_FAMILY.has(c)) {
+    headers.Origin = 'https://www.youtube.com';
+    headers.Referer = 'https://www.youtube.com/';
+  }
+  return { userAgent, headers };
+}
+
+/**
+ * Resolves a directly-playable audio stream for a YouTube video id, including
+ * the headers required to fetch it. Returns null when no suitable audio stream
+ * could be extracted.
+ */
+export async function resolveStreamUrl(videoId: string): Promise<StreamInfo | null> {
   const yt = await client();
 
   // YouTube binds the token in each /player request to the video id, so mint a
@@ -137,7 +180,7 @@ export async function resolveStreamUrl(videoId: string): Promise<string | null> 
       }
       const format = info.chooseFormat({ type: 'audio', quality: 'best' });
       const url = await format.decipher(yt.session.player);
-      if (url) return url;
+      if (url) return { url, ...streamHeadersFor(c) };
       errors.push(`${c}: empty url`);
     } catch (e) {
       errors.push(`${c}: ${e instanceof Error ? e.message : String(e)}`);
@@ -161,13 +204,15 @@ export type DownloadResult =
  */
 export async function downloadOnline(track: OnlineTrack): Promise<DownloadResult> {
   try {
-    const url = await resolveStreamUrl(track.id);
-    if (!url) return { ok: false, error: 'Could not extract an audio stream for this track.' };
+    const stream = await resolveStreamUrl(track.id);
+    if (!stream) return { ok: false, error: 'Could not extract an audio stream for this track.' };
 
     const dir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
     if (!dir) return { ok: false, error: 'No writable directory available' };
     const target = dir + safeFileName(track);
-    const { uri, status } = await FileSystem.downloadAsync(url, target);
+    const { uri, status } = await FileSystem.downloadAsync(stream.url, target, {
+      headers: stream.headers,
+    });
     if (status >= 400) return { ok: false, error: `Download failed (${status})` };
 
     try {

@@ -11,6 +11,10 @@ export type Song = {
   filename: string;
   ext: string;
   artwork?: string;
+  /** HTTP headers required to fetch a remote URL (e.g. YouTube media servers). */
+  headers?: Record<string, string>;
+  /** User-Agent required to fetch a remote URL. */
+  userAgent?: string;
 };
 
 export type Playlist = {
@@ -67,10 +71,16 @@ export function songToTrack(song: Song): RNTPTrack {
     album: song.album,
     duration: song.duration,
     artwork: song.artwork,
+    ...(song.userAgent ? { userAgent: song.userAgent } : {}),
+    ...(song.headers ? { headers: song.headers } : {}),
   };
 }
 
-export function onlineToSong(t: OnlineTrack, url: string): Song {
+export function onlineToSong(
+  t: OnlineTrack,
+  url: string,
+  extras?: { headers?: Record<string, string>; userAgent?: string },
+): Song {
   return {
     id: `yt:${t.id}`,
     url,
@@ -81,5 +91,7 @@ export function onlineToSong(t: OnlineTrack, url: string): Song {
     filename: `${t.artist} - ${t.title}.m4a`,
     ext: 'm4a',
     artwork: t.artwork,
+    headers: extras?.headers,
+    userAgent: extras?.userAgent,
   };
 }
